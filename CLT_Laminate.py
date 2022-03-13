@@ -108,19 +108,12 @@ class Laminate:
             self.B = self.B + (1 / 2) * Qbar * (z[i + 1] ** 2 - z[i] ** 2)
             self.D = self.D + (1 / 3) * Qbar * (z[i + 1] ** 3 - z[i] ** 3)
 
-        self.a = np.linalg.inv(self.A)
-        if np.all(abs(self.B) <= 1e-6):
-            self.b = np.empty((3, 3))
-            self.b.fill(np.nan)
-        else:
-            self.b = np.linalg.inv(self.B)
-
-        self.d = np.linalg.inv(self.D)
+        for arr in [self.A, self.B, self.D]:
+            arr[np.abs(arr) < 1e-14] = 0
 
         self.ABD = np.vstack((np.hstack((self.A, self.B)),
                               np.hstack((self.B, self.D))))
-        # self.abd = np.vstack((np.hstack((self.a, self.b)),
-        #                       np.hstack((self.b, self.d))))
+
         self.abd = np.linalg.inv(self.ABD)
         self.a = self.abd[:3, :3]
         self.b = self.abd[:3, 3:]
@@ -131,6 +124,11 @@ class Laminate:
         abd = self.abd.copy()
         abd[np.isnan(abd)] = 0
         self.lam_strain = np.dot(abd, np.transpose(F))
+        self.lam_strain[np.abs(self.lam_strain) < 1e-14] = 0
+
+        for ply in self.Plies:
+            ply.exy = self.lam_strain[:3]
+            ply.kxy = self.lam_strain[3:]
 
     def plyStrains(self):
         h = sum(self.Thickness)
@@ -146,14 +144,16 @@ class Laminate:
         strains = []
         for zz in z:
             strains.append(eps + zz*kap)
-        print(strains)
-        # return
+        return strains
 
     def ProgressiveFailureAnalysis(self, Nx, Ny, Nxy, Mx, My, Mxy, verbose):
 
         if self.Verbose:
             print('Progressive Failure Analysis')
-
+        
+        abd = self.abd.copy()
+        abd[np.isnan(abd)] = 0
+        
         MCD = np.max(np.abs([Nx, Ny, Nxy, Mx, My, Mxy]))
         Nxold = Nx
         F = np.array([Nx, Ny, Nxy, Mx, My, Mxy]) / MCD
@@ -171,15 +171,16 @@ class Laminate:
 
         test = [ply.FlagFail for ply in self.Plies]
         while not np.all(test) and t < tmax * 5:
-            counter = counter + 1
-            if counter > nsteps:
+            counter += 1
+            if counter >= nsteps:
                 print('The applied load is not enough to finish the PFA.\nIncrease initial value!\n')
                 return
             NM = dt[counter] * F
-            eps, _, _, _ = np.linalg.lstsq(self.ABD, np.transpose(NM), rcond=None)
+            
+            eps = np.dot(abd, np.transpose(NM))
 
             for i in range(self.NumberOfPlies):
-                self.Plies[i].exy = eps[:3]  # TODO: might need to change the end +=1
+                self.Plies[i].exy = eps[:3]
                 self.Plies[i].kxy = eps[3:]
 
                 self.Plies[i].calculateStress()
@@ -201,3 +202,73 @@ class Laminate:
         if self.Verbose:
             print('Progressive Failure Analysis Successfully Terminated!')
             print('=' * self.LengthDisplayOutput)
+    
+    def plot_curvature(self):
+        import matplotlib.pyplot as plt
+        
+        x = np.linspace(0, 1, 50)
+        y = x.copy()
+        w = np.zeros((x.shape[0], x.shape[0]))
+        X, Y = np.meshgrid(x, y)
+
+        for i, xx in enumerate(x):
+            for j, yy in enumerate(y):
+                wx = -self.lam_strain[3] * np.square(xx-np.min(x))
+                wy = -self.lam_strain[4] * np.square(yy-np.min(y))
+                wxy = -self.lam_strain[5] * (xx-np.min(x)) * (yy-np.min(y))
+                w[j, i] = wx + wy + wxy
+
+        fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        surf = ax.plot_surface(X, Y, w, cmap='jet')
+        ax.plot_surface(X, Y, np.zeros(w.shape), alpha=0.25, color='k')
+        plt.show()
+        
+    def plot_strains(self, glob=True, idx=0):
+        import matplotlib.pyplot as plt
+        plt.figure()
+        
+        x = []
+        y = []
+        
+        for ply in self.Plies:
+
+            z_top = ply.z_MidPlane - ply.thickness/2
+            z_bottom = ply.z_MidPlane + ply.thickness/2
+            print(z_top, ply.z_MidPlane, z_bottom)
+            
+            if glob:
+                eps_top = ply.exy + z_top * ply.kxy
+                eps_top[-1] = eps_top[-1] / 2  # engineering strain
+                eps_btm = ply.exy + z_bottom * ply.kxy
+                eps_btm[-1] = eps_btm[-1] / 2  # engineering strain
+                
+                top = np.dot(ply.T, eps_top)
+                bottom = np.dot(ply.T, eps_btm)
+            else:
+                top = ply.exy + z_top * ply.kxy
+                bottom = ply.exy + z_bottom * ply.kxy
+            
+            x = [0, bottom[idx], top[idx], 0]
+            y = [z_bottom, z_bottom, z_top, z_top]
+            plt.fill(x, y, alpha=0.5, label=str(ply.angle))
+        
+        ax = plt.gca()
+        ax.invert_yaxis()
+        plt.legend()
+        plt.show()
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

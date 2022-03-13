@@ -30,17 +30,12 @@ class Ply:
                               self.angle)
         self.T = self.calculateT(self.angle)
 
-        self.strain = None
-
     def calculateStress(self):
-        self.Sxy: np.ndarray = self.Qbar * (self.exy + self.z_MidPlane * self.kxy)
         self.Sxy = np.dot(self.Qbar, self.exy + self.z_MidPlane * self.kxy)
-        # self.S12 = np.linalg.inv(self.T) / self.Sxy
-        self.S12, _, _, _ = np.linalg.lstsq(np.linalg.inv(self.T), self.Sxy, rcond=None)
-        # Here there might be issues with self.Material which does
-        # not calculate S automatically! Need to double check!
-        self.material.calculateS()
-        self.e12 = self.material.S * self.S12  # This might be wrong if using PFA
+
+        self.S12 = np.dot(self.T, self.Sxy)
+        self.e12 = np.dot(self.T, self.exy + self.z_MidPlane * self.kxy)  # This might be wrong if using PFA
+        # self.e12 = np.dot(self.material.S, self.S12)  # This might be wrong if using PFA
 
     def failedPly(self, Reduction):
         self.FlagFail = True

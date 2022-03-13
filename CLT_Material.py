@@ -39,6 +39,8 @@ class Material:
         self.verb = verbose
         self.name = name
 
+        self.calculateS()
+
     def calculateS(self):
         self.S = np.array([[1 / self.E1, -self.v12 / self.E1, 0],
                            [-self.v12 / self.E1, 1 / self.E2, 0],
