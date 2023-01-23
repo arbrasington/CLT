@@ -1,16 +1,17 @@
 import numpy as np
 
+from CLT_Base import Node
 from CLT_Ply import Ply
 
 
-class Laminate:
-    Stack = None
-    Material = None
-    Thickness = None
-    Symmetric = None
-    RepeatLeft = None
-    RepeatRight = None
-    NumberOfPlies = None
+class Laminate(Node):
+    stack = None
+    material = None
+    thickness = None
+    symmetric = None
+    repeatLeft = None
+    repeatRight = None
+    numberOfPlies = None
 
     Plies = None
     A = np.zeros((3, 3))
@@ -23,49 +24,36 @@ class Laminate:
     d = np.zeros((3, 3))
 
     LengthDisplayOutput = 70
-    Verbose = False
+    verbose: bool
 
-    def __init__(self,
-                 stack,
-                 material,
-                 thickness,
-                 symmetric,
-                 repeat_left,
-                 repeat_right,
-                 verbose=False):
-        self.Stack = stack
-        self.Material = material
-        self.Thickness = thickness
-        self.Symmetric = symmetric
-        self.RepeatLeft = repeat_left
-        self.RepeatRight = repeat_right
-        self.Verbose = verbose
+    def __init__(self, stack, material, thickness, symmetric, repeatLeft, repeatRight, verbose=False):
+        super().__init__(locals())
 
         self.lam_strain = None
 
-        if self.Symmetric:
-            self.NumberOfPlies = (len(self.Stack) * self.RepeatLeft) * 2 * self.RepeatRight
+        if self.symmetric:
+            self.NumberOfPlies = (len(self.stack) * self.repeatLeft) * 2 * self.repeatRight
         else:
-            self.NumberOfPlies = len(self.Stack) * self.RepeatLeft * self.RepeatRight
+            self.NumberOfPlies = len(self.stack) * self.repeatLeft * self.repeatRight
 
-        if len(self.Material) == 1:
-            self.Material = np.repeat(self.Material, len(self.Stack))
+        if len(self.material) == 1:
+            self.material = np.repeat(self.material, len(self.stack))
 
-        if len(self.Thickness) == 1:
-            self.Thickness = np.ones((1, len(self.Stack))) * self.Thickness
+        if len(self.thickness) == 1:
+            self.thickness = np.ones((1, len(self.stack))) * self.thickness
 
         self.parseStackingSequence()
         self.parsePly()
         self.calculateABD()
 
     def parseStackingSequence(self):
-        stack = self.Stack
-        repeat_left = self.RepeatLeft
-        repeat_right = self.RepeatRight
-        thickness = self.Thickness
-        material = self.Material
+        stack = self.stack
+        repeat_left = self.repeatLeft
+        repeat_right = self.repeatRight
+        thickness = self.thickness
+        material = self.material
 
-        if self.Symmetric:
+        if self.symmetric:
             explicit_stack = np.repeat([np.repeat(stack, repeat_left), np.flip(np.repeat(stack, repeat_left))], repeat_right)
             explicit_thickness = np.repeat(
                 [np.repeat(thickness, repeat_left), np.flip(np.repeat(thickness, repeat_left))], repeat_right)
@@ -77,30 +65,30 @@ class Laminate:
             explicit_thickness = np.repeat(thickness, repeat_right)
             explicit_material = np.repeat(material, repeat_right)
 
-        self.Stack = explicit_stack
-        self.Thickness = explicit_thickness
-        self.Material = explicit_material
+        self.stack = explicit_stack
+        self.thickness = explicit_thickness
+        self.material = explicit_material
 
     def parsePly(self):
         plies = []
-        for i in range(len(self.Stack)):
-            plies.append(Ply(angle=self.Stack[i],
-                             material=self.Material[i],
-                             thickness=self.Thickness[i]))
+        for i in range(len(self.stack)):
+            plies.append(Ply(angle=self.stack[i],
+                             material=self.material[i],
+                             thickness=self.thickness[i]))
 
         self.Plies = plies
 
     def calculateABD(self):
-        # Laminate Local Rerefence System
-        h = sum(self.Thickness)
-        z = np.zeros((len(self.Stack)+1, 1))
+        # Laminate Local Reference System
+        h = sum(self.thickness)
+        z = np.zeros((len(self.stack)+1, 1))
         z[0] = -h / 2
 
         for i in range(1, len(z)):
-            z[i] = z[i - 1] + self.Thickness[i - 1]
+            z[i] = z[i - 1] + self.thickness[i - 1]
 
         for i in range(self.NumberOfPlies):
-            self.Plies[i].z_MidPlane = z[i] + self.Thickness[i] / 2
+            self.Plies[i].z_MidPlane = z[i] + self.thickness[i] / 2
 
         for i in range(len(z)-1):
             Qbar = self.Plies[i].Qbar
@@ -109,7 +97,7 @@ class Laminate:
             self.D = self.D + (1 / 3) * Qbar * (z[i + 1] ** 3 - z[i] ** 3)
 
         for arr in [self.A, self.B, self.D]:
-            arr[np.abs(arr) < 1e-14] = 0
+            arr[np.abs(arr) < 1e-8] = 0
 
         self.ABD = np.vstack((np.hstack((self.A, self.B)),
                               np.hstack((self.B, self.D))))
@@ -123,7 +111,8 @@ class Laminate:
         F = np.array([Nx, Ny, Nxy, Mx, My, Mxy])
         abd = self.abd.copy()
         abd[np.isnan(abd)] = 0
-        self.lam_strain = np.dot(abd, np.transpose(F))
+
+        self.lam_strain = abd @ np.transpose(F)
         self.lam_strain[np.abs(self.lam_strain) < 1e-14] = 0
 
         for ply in self.Plies:
@@ -131,12 +120,12 @@ class Laminate:
             ply.kxy = self.lam_strain[3:]
 
     def plyStrains(self):
-        h = sum(self.Thickness)
-        z = np.zeros((len(self.Stack) + 1, 1))
+        h = sum(self.thickness)
+        z = np.zeros((len(self.stack) + 1, 1))
         z[0] = -h / 2
 
         for i in range(1, len(z)):
-            z[i] = z[i - 1] + self.Thickness[i - 1]
+            z[i] = z[i - 1] + self.thickness[i - 1]
         z = z.flatten()
 
         eps = self.lam_strain[:3]
@@ -148,7 +137,7 @@ class Laminate:
 
     def ProgressiveFailureAnalysis(self, Nx, Ny, Nxy, Mx, My, Mxy, verbose):
 
-        if self.Verbose:
+        if self.verbose:
             print('Progressive Failure Analysis')
         
         abd = self.abd.copy()
@@ -159,7 +148,7 @@ class Laminate:
         F = np.array([Nx, Ny, Nxy, Mx, My, Mxy]) / MCD
         if np.all(F == 0) or np.all(np.isnan(F)):
             print('Initial Loads are unusable. Aborting...\n')
-            if self.Verbose: print('=' * self.LengthDisplayOutput)
+            if self.verbose: print('=' * self.LengthDisplayOutput)
             return
 
         tmax = MCD
@@ -184,7 +173,7 @@ class Laminate:
                 self.Plies[i].kxy = eps[3:]
 
                 self.Plies[i].calculateStress()
-                TW = self.Material[i].calculateTW(self.Plies[i].S12)
+                TW = self.material[i].calculateTW(self.Plies[i].S12)
                 if TW > 1 and not self.Plies[i].FlagFail:
                     self.Plies[i].failedPly([0.4, 0.4, 0.15])
                     if verbose:
@@ -199,7 +188,7 @@ class Laminate:
         if verbose:
             print('ALL plies failed!')
 
-        if self.Verbose:
+        if self.verbose:
             print('Progressive Failure Analysis Successfully Terminated!')
             print('=' * self.LengthDisplayOutput)
     
@@ -234,7 +223,6 @@ class Laminate:
 
             z_top = ply.z_MidPlane - ply.thickness/2
             z_bottom = ply.z_MidPlane + ply.thickness/2
-            print(z_top, ply.z_MidPlane, z_bottom)
             
             if glob:
                 eps_top = ply.exy + z_top * ply.kxy

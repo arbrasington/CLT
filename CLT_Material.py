@@ -1,7 +1,9 @@
 import numpy as np
 
+from CLT_Base import Node
 
-class Material:
+
+class Material(Node):
     # stress allowables
     s1t = None
     s1c = None
@@ -17,27 +19,8 @@ class Material:
     F12 = None
     F66 = None
 
-    def __init__(self,
-                 name,
-                 e1,
-                 e2,
-                 g12,
-                 v12,
-                 a11=None,
-                 a22=None,
-                 S=None,
-                 Q=None,
-                 verbose=False):
-        self.E1 = e1
-        self.E2 = e2
-        self.G12 = g12
-        self.v12 = v12
-        self.a11 = a11
-        self.a22 = a22
-        self.S = S
-        self.Q = Q
-        self.verb = verbose
-        self.name = name
+    def __init__(self, name, E1, E2, G12, v12, a11=None, a22=None, S=None, Q=None, verbose=False):
+        super().__init__(locals())
 
         self.calculateS()
 
